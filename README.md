@@ -136,3 +136,93 @@ src/main/java/com/reservation/management/api
 
 이 프로젝트는 기능 추가 시에도 `도메인 규칙 -> 서비스 -> HTTP 매핑` 흐름을 유지하도록 설계되어,  
 결제/승인/관리자 기능 확장 시 구조적 일관성을 유지하기 쉽습니다.
+
+## 7. 실행 방법
+
+### 1) 프로젝트 실행
+```bash
+mvn spring-boot:run
+```
+
+### 2) 서버 확인
+- 기본 주소: `http://localhost:8080`
+- 예약 API 기본 경로: `http://localhost:8080/api/reservations`
+
+## 8. API 요청 예시 (JSON)
+
+### 1) 예약 생성
+- `POST /api/reservations`
+
+요청:
+```json
+{
+  "customerName": "홍길동",
+  "reservedAt": "2026-02-20T14:30:00"
+}
+```
+
+성공 응답 예시 (`201 Created`):
+```json
+{
+  "reservationId": 1,
+  "customerName": "홍길동",
+  "reservedAt": "2026-02-20T14:30",
+  "status": "REQUESTED"
+}
+```
+
+### 2) 예약 단건 조회
+- `GET /api/reservations/{reservationId}`
+
+응답 예시 (`200 OK`):
+```json
+{
+  "reservationId": 1,
+  "customerName": "홍길동",
+  "reservedAt": "2026-02-20T14:30",
+  "status": "REQUESTED"
+}
+```
+
+### 3) 예약 취소
+- `PATCH /api/reservations/{reservationId}/cancel`
+
+응답 예시 (`200 OK`):
+```json
+{
+  "reservationId": 1,
+  "customerName": "홍길동",
+  "reservedAt": "2026-02-20T14:30",
+  "status": "CANCELED"
+}
+```
+
+## 9. 에러 응답 예시
+
+공통 형식:
+```json
+{
+  "message": "에러 메시지"
+}
+```
+
+예시 1) 잘못된 요청 (`400 Bad Request`)
+```json
+{
+  "message": "예약 시간은 현재 시각 이후여야 합니다."
+}
+```
+
+예시 2) 리소스 없음 (`404 Not Found`)
+```json
+{
+  "message": "예약을 찾을 수 없습니다. id=999"
+}
+```
+
+예시 3) 정책 위반 (`409 Conflict`)
+```json
+{
+  "message": "동일 시간대에 이미 활성 예약이 존재합니다."
+}
+```
