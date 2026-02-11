@@ -18,6 +18,8 @@ Spring Boot 기반 예약 관리 API 프로젝트입니다.
 - Spring Boot 3.5.0
 - Spring Web
 - Spring Data JPA
+- H2 Database (in-memory, local default)
+- MySQL (runtime profile)
 - Maven
 
 ## 3. 패키지 구조
@@ -139,14 +141,34 @@ src/main/java/com/reservation/management/api
 
 ## 7. 실행 방법
 
-### 1) 프로젝트 실행
+### 1) 기본 실행 (H2 in-memory, 기본 프로필)
 ```bash
 mvn spring-boot:run
 ```
 
-### 2) 서버 확인
+### 2) MySQL 프로필로 실행
+사전 준비:
+- MySQL DB 생성
+```sql
+CREATE DATABASE reservation_management CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
+
+- 환경변수 설정 예시 (PowerShell)
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3306/reservation_management?serverTimezone=Asia/Seoul&characterEncoding=UTF-8"
+$env:DB_USERNAME="root"
+$env:DB_PASSWORD="비밀번호"
+```
+
+실행:
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=mysql
+```
+
+### 3) 서버 확인
 - 기본 주소: `http://localhost:8080`
 - 예약 API 기본 경로: `http://localhost:8080/api/reservations`
+- H2 콘솔(H2 프로필일 때만): `http://localhost:8080/h2-console`
 
 ## 8. API 요청 예시 (JSON)
 
