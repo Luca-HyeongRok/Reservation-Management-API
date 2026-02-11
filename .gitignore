@@ -33,3 +33,8 @@ bin/
 
 ### Maven ###
 /target/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
