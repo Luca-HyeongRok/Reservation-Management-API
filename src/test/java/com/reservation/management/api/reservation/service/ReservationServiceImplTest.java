@@ -22,13 +22,13 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 @ExtendWith(MockitoExtension.class)
 class ReservationServiceImplTest {
@@ -44,11 +44,10 @@ class ReservationServiceImplTest {
     }
 
     @Test
-    @DisplayName("예약 생성 성공: 유효한 요청이면 REQUESTED 상태로 저장된다")
+    @DisplayName("예약 생성 성공")
     void createReservation_success_savesAsRequested() {
-        // given
         LocalDateTime futureTime = LocalDateTime.now().plusDays(1);
-        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", futureTime.toString());
+        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", futureTime.toString(), 2);
 
         when(reservationRepository.existsByReservedAtAndStatusIn(
                 eq(futureTime),
@@ -61,72 +60,77 @@ class ReservationServiceImplTest {
             return saved;
         });
 
-        // when
         ReservationResponse response = reservationService.createReservation(request);
 
-        // then
         assertEquals(1L, response.reservationId());
         assertEquals("홍길동", response.customerName());
+        assertEquals(2, response.partySize());
         assertEquals("REQUESTED", response.status());
         verify(reservationRepository).save(any(Reservation.class));
     }
 
     @Test
-    @DisplayName("예약 생성 실패: 과거 시점이면 IllegalArgumentException이 발생한다")
+    @DisplayName("예약 생성 실패: 과거 시간")
     void createReservation_fail_whenReservedAtIsPast() {
-        // given
         LocalDateTime pastTime = LocalDateTime.now().minusMinutes(1);
-        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", pastTime.toString());
+        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", pastTime.toString(), 2);
 
-        // when
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
                 () -> reservationService.createReservation(request)
         );
 
-        // then
         assertTrue(exception.getMessage().contains("예약 시간"));
         verify(reservationRepository, never()).existsByReservedAtAndStatusIn(any(), any());
         verify(reservationRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("예약 생성 실패: 동일 시간대 활성 예약이 있으면 IllegalStateException이 발생한다")
+    @DisplayName("예약 생성 실패: 동일 시간 중복")
     void createReservation_fail_whenActiveReservationExistsAtSameTime() {
-        // given
         LocalDateTime futureTime = LocalDateTime.now().plusHours(3);
-        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", futureTime.toString());
+        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", futureTime.toString(), 2);
 
         when(reservationRepository.existsByReservedAtAndStatusIn(
                 eq(futureTime),
                 eq(EnumSet.of(ReservationStatus.REQUESTED, ReservationStatus.CONFIRMED))
         )).thenReturn(true);
 
-        // when
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
                 () -> reservationService.createReservation(request)
         );
 
-        // then
         assertTrue(exception.getMessage().contains("동일 시간대"));
         verify(reservationRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("예약 취소 성공: REQUESTED 상태는 CANCELED로 전이된다")
+    @DisplayName("예약 생성 실패: partySize가 1 미만")
+    void createReservation_fail_whenPartySizeLessThanOne() {
+        LocalDateTime futureTime = LocalDateTime.now().plusHours(3);
+        ReservationCreateRequest request = new ReservationCreateRequest("홍길동", futureTime.toString(), 0);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> reservationService.createReservation(request)
+        );
+
+        assertEquals("예약 인원은 1명 이상이어야 합니다.", exception.getMessage());
+        verify(reservationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("예약 취소 성공")
     void cancelReservation_success_whenStatusIsRequested() {
-        // given
         Reservation reservation = createReservation(10L, ReservationStatus.REQUESTED, LocalDateTime.now().plusDays(1));
         LocalDateTime beforeCancelUpdateTime = reservation.getUpdatedAt();
 
         when(reservationRepository.findById(10L)).thenReturn(Optional.of(reservation));
         when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        // when
         ReservationResponse response = reservationService.cancelReservation(10L);
 
-        // then
         assertEquals("CANCELED", response.status());
         assertEquals(ReservationStatus.CANCELED, reservation.getStatus());
         assertNotNull(reservation.getCancelReason());
@@ -134,20 +138,17 @@ class ReservationServiceImplTest {
         verify(reservationRepository).save(reservation);
     }
 
-    @ParameterizedTest(name = "예약 취소 실패: {0} 상태는 취소할 수 없다")
+    @ParameterizedTest(name = "예약 취소 실패: {0} 상태")
     @MethodSource("nonCancelableStatuses")
     void cancelReservation_fail_whenStatusIsFinalized(ReservationStatus finalizedStatus) {
-        // given
         Reservation reservation = createReservation(20L, finalizedStatus, LocalDateTime.now().plusDays(1));
         when(reservationRepository.findById(20L)).thenReturn(Optional.of(reservation));
 
-        // when
         IllegalStateException exception = assertThrows(
                 IllegalStateException.class,
                 () -> reservationService.cancelReservation(20L)
         );
 
-        // then
         assertTrue(exception.getMessage().contains("취소"));
         verify(reservationRepository, never()).save(any());
     }
@@ -163,10 +164,11 @@ class ReservationServiceImplTest {
         Reservation reservation = new Reservation();
         ReflectionTestUtils.setField(reservation, "id", id);
         reservation.setReservationNumber("RSV-TEST-" + id);
-        reservation.setCustomerName("테스터");
+        reservation.setCustomerName("테스트");
         reservation.setCustomerPhone("010-0000-0000");
         reservation.setCustomerEmail("test@example.com");
         reservation.setReservedAt(reservedAt);
+        reservation.setPartySize(2);
         reservation.setStatus(status);
         reservation.setCancelReason(null);
         reservation.setCreatedAt(LocalDateTime.now().minusHours(2));

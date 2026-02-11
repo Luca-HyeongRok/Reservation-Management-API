@@ -34,17 +34,14 @@ public class ReservationServiceImpl implements ReservationService {
 
     @Override
     public ReservationResponse createReservation(ReservationCreateRequest request) {
-        // 입력값 검증은 도메인 상태 변경 전에 가장 먼저 처리해, 잘못된 요청이 저장 로직으로 흐르지 않도록 차단합니다.
         validateCreateRequest(request);
 
         LocalDateTime reservedAt = parseReservedAt(request.reservedAt());
 
-        // 예약 시각은 과거일 수 없으므로, 중복 조회 전에 시간 유효성부터 확인해 불필요한 DB 접근을 줄입니다.
         if (!reservedAt.isAfter(LocalDateTime.now())) {
             throw new IllegalArgumentException("예약 시간은 현재 시각 이후여야 합니다.");
         }
 
-        // 활성 상태(요청/확정) 기준으로 같은 시각이 이미 점유되어 있으면 생성을 막아 슬롯 충돌 규칙을 보장합니다.
         boolean duplicated = reservationRepository.existsByReservedAtAndStatusIn(reservedAt, ACTIVE_STATUSES);
         if (duplicated) {
             throw new IllegalStateException("동일 시간대에 이미 활성 예약이 존재합니다.");
@@ -53,10 +50,10 @@ public class ReservationServiceImpl implements ReservationService {
         Reservation reservation = new Reservation();
         reservation.setReservationNumber(generateReservationNumber());
         reservation.setCustomerName(request.customerName().trim());
-        // 현재 DTO에는 연락처/이메일 필드가 없어, 엔티티 필수 제약을 만족시키는 기본값을 저장합니다.
         reservation.setCustomerPhone("UNKNOWN");
         reservation.setCustomerEmail(null);
         reservation.setReservedAt(reservedAt);
+        reservation.setPartySize(request.partySize());
         reservation.setStatus(ReservationStatus.REQUESTED);
         reservation.setCancelReason(null);
 
@@ -71,7 +68,6 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     @Transactional(readOnly = true)
     public ReservationResponse getReservation(Long reservationId) {
-        // 단건 조회는 상태 변경 없이 현재 스냅샷만 반환하므로 읽기 전용 트랜잭션으로 처리합니다.
         Reservation reservation = reservationRepository.findById(reservationId)
                 .orElseThrow(() -> new NoSuchElementException("예약을 찾을 수 없습니다. id=" + reservationId));
         return toResponse(reservation);
@@ -80,7 +76,6 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     @Transactional(readOnly = true)
     public List<ReservationResponse> getReservations() {
-        // 목록 조회는 도메인 규칙 적용보다 조회 책임에 집중해 엔티티를 응답 DTO로만 변환합니다.
         return reservationRepository.findAll().stream()
                 .map(this::toResponse)
                 .toList();
@@ -88,18 +83,15 @@ public class ReservationServiceImpl implements ReservationService {
 
     @Override
     public ReservationResponse cancelReservation(Long reservationId) {
-        // 취소 대상 조회가 먼저 선행되어야 현재 상태를 근거로 전이 가능 여부를 판정할 수 있습니다.
         Reservation reservation = reservationRepository.findById(reservationId)
                 .orElseThrow(() -> new NoSuchElementException("예약을 찾을 수 없습니다. id=" + reservationId));
 
         ReservationStatus currentStatus = reservation.getStatus();
 
-        // 종결 상태는 취소 전이가 불가능하므로 즉시 예외 처리해 중복 취소/역전이를 차단합니다.
         if (CANNOT_CANCEL_STATUSES.contains(currentStatus)) {
             throw new IllegalStateException("이미 종결된 예약은 취소할 수 없습니다. status=" + currentStatus);
         }
 
-        // 취소 가능한 상태는 요청/확정으로 제한해 도메인 상태 전이 규칙을 강제합니다.
         if (!ACTIVE_STATUSES.contains(currentStatus)) {
             throw new IllegalStateException("현재 상태에서는 취소할 수 없습니다. status=" + currentStatus);
         }
@@ -124,6 +116,10 @@ public class ReservationServiceImpl implements ReservationService {
         if (request.reservedAt() == null || request.reservedAt().trim().isEmpty()) {
             throw new IllegalArgumentException("예약 시간은 필수입니다.");
         }
+
+        if (request.partySize() == null || request.partySize() < 1) {
+            throw new IllegalArgumentException("예약 인원은 1명 이상이어야 합니다.");
+        }
     }
 
     private LocalDateTime parseReservedAt(String reservedAtText) {
@@ -143,6 +139,7 @@ public class ReservationServiceImpl implements ReservationService {
                 reservation.getId(),
                 reservation.getCustomerName(),
                 reservation.getReservedAt().toString(),
+                reservation.getPartySize(),
                 reservation.getStatus().name()
         );
     }

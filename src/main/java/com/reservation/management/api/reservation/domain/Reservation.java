@@ -34,6 +34,9 @@ public class Reservation {
     @Column(nullable = false)
     private LocalDateTime reservedAt;
 
+    @Column(nullable = false)
+    private int partySize;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ReservationStatus status;
@@ -96,6 +99,14 @@ public class Reservation {
 
     public void setReservedAt(LocalDateTime reservedAt) {
         this.reservedAt = reservedAt;
+    }
+
+    public int getPartySize() {
+        return partySize;
+    }
+
+    public void setPartySize(int partySize) {
+        this.partySize = partySize;
     }
 
     public ReservationStatus getStatus() {
